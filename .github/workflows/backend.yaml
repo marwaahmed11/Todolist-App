@@ -43,5 +43,4 @@ jobs:
           timeout 10 npm start &
           sleep 3
           # Check if app is listening (adjust port as needed)
-          curl -f http://localhost:3000/health || exit 1
-        continue-on-error: true
+          curl -f http://localhost:8080/api/tasks/ping || exit 1
