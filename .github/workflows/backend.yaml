@@ -38,6 +38,15 @@ jobs:
           node --check routes/tasks.js
           node --check models/task.js
 
+      - name: Start MongoDB
+        run: |
+          docker rm -f mongodb 2>/dev/null || true
+
+          docker run -d \
+            --name mongodb \
+            -p 27017:27017 \
+            marwaahmed11/mongodb:v1
+
       - name: Start server and wait for health
         shell: bash
         run: |
@@ -63,4 +72,3 @@ jobs:
             exit 1
           fi
 
-          
