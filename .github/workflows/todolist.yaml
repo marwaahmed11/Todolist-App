@@ -12,21 +12,11 @@ on:
   workflow_dispatch:
 
 jobs:
-
-  # ==========================================
-  # BACKEND
-  # ==========================================
-
-  backend:
-    name: Backend CI
+  combined:
+    name: Backend + Frontend CI
     runs-on: self-hosted
 
-    defaults:
-      run:
-        working-directory: server
-
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -35,22 +25,19 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install dependencies
+      - name: Install backend dependencies
+        working-directory: server
         run: npm ci
 
       - name: Check JavaScript syntax
+        working-directory: server
         run: |
           node --check index.js
           node --check db.js
           node --check routes/tasks.js
           node --check models/task.js
 
-      # ==========================================
-      # MONGODB
-      # ==========================================
-
       - name: Start MongoDB
-        working-directory: .
         run: |
           docker rm -f mongodb 2>/dev/null || true
 
@@ -60,7 +47,6 @@ jobs:
             marwaahmed11/mongodb:v1
 
       - name: Wait for MongoDB
-        working-directory: .
         run: |
           echo "Waiting for MongoDB..."
 
@@ -81,24 +67,27 @@ jobs:
           docker logs mongodb
           exit 1
 
-      # ==========================================
-      # START BACKEND
-      # ==========================================
-
       - name: Start backend
         shell: bash
+        working-directory: server
+        env:
+          PORT: 8080
+          MONGODB_URI: mongodb://127.0.0.1:27017/todo-app
         run: |
           echo "Starting backend..."
-
-          nohup npm start > server.log 2>&1 &
-          echo $! > server.pid
+          # start the backend and write logs/pid to the repository root so other steps can access them
+          PORT=$PORT MONGODB_URI="$MONGODB_URI" nohup npm start > ../server.log 2>&1 &
+          echo $! > ../server.pid
+          sleep 2
+          tail -n 200 ../server.log || true
 
       - name: Verify backend
         shell: bash
+        working-directory: server
         run: |
           echo "Waiting for backend..."
 
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -sSf \
               http://localhost:8080/api/tasks/ping \
               > /tmp/backend-health 2>/dev/null; then
@@ -108,68 +97,45 @@ jobs:
               exit 0
             fi
 
-            echo "Waiting for backend... ($i/30)"
+            echo "Waiting for backend... ($i/60)"
             sleep 1
           done
 
           echo "Backend failed."
 
           echo "========== BACKEND LOG =========="
-          cat server.log
+          cat ../server.log || true
 
           echo "========== PORT 8080 =========="
           ss -ltnp | grep :8080 || true
 
           exit 1
 
-
-  # ==========================================
-  # FRONTEND
-  # ==========================================
-
-  frontend:
-    name: Frontend CI
-    needs: backend
-    runs-on: self-hosted
-
-    defaults:
-      run:
-        working-directory: client
-
-    steps:
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          
       - name: Install frontend dependencies
+        working-directory: client
         run: npm ci
 
       - name: Build frontend
+        working-directory: client
         run: npm run build
-
-      # ==========================================
-      # START FRONTEND
-      # ==========================================
 
       - name: Start frontend
         shell: bash
+        working-directory: client
         run: |
           echo "Starting frontend..."
-
-          nohup npm start > frontend.log 2>&1 &
-          echo $! > frontend.pid
+          nohup npm start > ../frontend.log 2>&1 &
+          echo $! > ../frontend.pid
+          sleep 2
+          tail -n 200 ../frontend.log || true
 
       - name: Verify frontend
         shell: bash
+        working-directory: client
         run: |
           echo "Waiting for frontend on port 3000..."
 
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -sSf \
               http://localhost:3000 \
               > /dev/null 2>&1; then
@@ -178,25 +144,36 @@ jobs:
               exit 0
             fi
 
-            echo "Waiting for frontend... ($i/30)"
+            echo "Waiting for frontend... ($i/60)"
             sleep 1
           done
 
           echo "Frontend failed."
 
           echo "========== FRONTEND LOG =========="
-          cat frontend.log
+          cat ../frontend.log || true
 
           exit 1
 
-      # ==========================================
-      # TEST FRONTEND → BACKEND
-      # ==========================================
-
       - name: Verify frontend can reach backend
+        shell: bash
         run: |
           curl -fsS http://localhost:8080/api/tasks/ping
 
           echo
           echo "Frontend/Backend environment is working!"
 
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          # stop processes if pid files exist
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) 2>/dev/null || true
+            rm -f server.pid
+          fi
+          if [ -f frontend.pid ]; then
+            kill $(cat frontend.pid) 2>/dev/null || true
+            rm -f frontend.pid
+          fi
+          docker rm -f mongodb 2>/dev/null || true
