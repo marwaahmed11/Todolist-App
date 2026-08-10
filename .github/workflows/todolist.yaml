@@ -80,55 +80,6 @@ jobs:
           echo $! > ../server.pid
           sleep 2
           tail -n 200 ../server.log || true
-
-      - name: Verify backend
-        shell: bash
-        working-directory: server
-        run: |
-          echo "Waiting for backend..."
-
-          for i in $(seq 1 60); do
-            if curl -sSf \
-              http://localhost:8080/api/tasks/ping \
-              > /tmp/backend-health 2>/dev/null; then
-
-              echo "Backend is healthy!"
-              cat /tmp/backend-health
-              exit 0
-            fi
-
-            echo "Waiting for backend... ($i/60)"
-            sleep 1
-          done
-
-          echo "Backend failed."
-
-          echo "========== BACKEND LOG =========="
-          cat ../server.log || true
-
-          echo "========== PORT 8080 =========="
-          ss -ltnp | grep :8080 || true
-
-          exit 1
-
-      - name: Install frontend dependencies
-        working-directory: client
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: client
-        run: npm run build
-
-      - name: Start frontend
-        shell: bash
-        working-directory: client
-        run: |
-          echo "Starting frontend..."
-          nohup npm start > ../frontend.log 2>&1 &
-          echo $! > ../frontend.pid
-          sleep 2
-          tail -n 200 ../frontend.log || true
-
       - name: Verify frontend
         shell: bash
         working-directory: client
@@ -155,52 +106,67 @@ jobs:
 
           exit 1
 
-      - name: Verify frontend can reach backend
+      - name: Verify backend API
         shell: bash
         run: |
+          echo "Testing backend health..."
+
           curl -fsS http://localhost:8080/api/tasks/ping
 
           echo
-          echo "Frontend/Backend environment is working!"
-
-      - name: Cleanup
-        if: always()
-        shell: bash
-        run: |
-          # stop processes if pid files exist
-          if [ -f server.pid ]; then
-            kill $(cat server.pid) 2>/dev/null || true
-            rm -f server.pid
-          fi
-          if [ -f frontend.pid ]; then
-            kill $(cat frontend.pid) 2>/dev/null || true
-            rm -f frontend.pid
-          fi
-          docker rm -f mongodb 2>/dev/null || true
+          echo "Backend API is working!"
 
       - name: Test adding a task via API
         shell: bash
         run: |
           echo "Testing POST /api/tasks..."
-          
-          # Add a task
-          RESPONSE=$(curl -X POST http://localhost:8080/api/tasks \
+
+          RESPONSE=$(curl -fsS \
+            -X POST \
+            http://localhost:8080/api/tasks \
             -H "Content-Type: application/json" \
-            -d '{"task":"Test task from CI","completed":false}' \
-            -s)
-          
+            -d '{"task":"Test task from CI","completed":false}')
+
           echo "Response: $RESPONSE"
-          
-          # Verify the task was added by getting all tasks
-          echo "Fetching all tasks..."
-          TASKS=$(curl -s http://localhost:8080/api/tasks)
-          echo "Tasks: $TASKS"
-          
-          # Check if response contains the task
+
           if echo "$RESPONSE" | grep -q "Test task from CI"; then
-            echo "✅ Task successfully added!"
+            echo "Task successfully added!"
           else
-            echo "❌ Failed to add task"
+            echo "Failed to add task"
             exit 1
           fi
-          
+
+          echo
+          echo "Fetching all tasks..."
+
+          TASKS=$(curl -fsS http://localhost:8080/api/tasks)
+
+          echo "Tasks: $TASKS"
+
+          if echo "$TASKS" | grep -q "Test task from CI"; then
+            echo "Task successfully retrieved!"
+          else
+            echo "Task was not found!"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          echo "Cleaning up..."
+
+          if [ -f server.pid ]; then
+            kill "$(cat server.pid)" 2>/dev/null || true
+            rm -f server.pid
+          fi
+
+          if [ -f frontend.pid ]; then
+            kill "$(cat frontend.pid)" 2>/dev/null || true
+            rm -f frontend.pid
+          fi
+
+          docker rm -f mongodb 2>/dev/null || true
+
+        run: |
+          echo "Cleanup completed."
