@@ -168,5 +168,3 @@ jobs:
 
           docker rm -f mongodb 2>/dev/null || true
 
-        run: |
-          echo "Cleanup completed."
