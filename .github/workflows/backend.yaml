@@ -1,4 +1,4 @@
-name: Backend CI
+name: Todo App CI
 
 on:
   push:
@@ -12,7 +12,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+
+  # ==========================================
+  # BACKEND
+  # ==========================================
+
+  backend:
+    name: Backend CI
     runs-on: self-hosted
 
     defaults:
@@ -39,8 +45,12 @@ jobs:
           node --check routes/tasks.js
           node --check models/task.js
 
+      # ==========================================
+      # MONGODB
+      # ==========================================
 
       - name: Start MongoDB
+        working-directory: .
         run: |
           docker rm -f mongodb 2>/dev/null || true
 
@@ -58,6 +68,7 @@ jobs:
             if docker exec mongodb \
               mongosh --quiet \
               --eval "db.adminCommand('ping').ok" 2>/dev/null | grep -q 1; then
+
               echo "MongoDB is ready"
               exit 0
             fi
@@ -71,44 +82,121 @@ jobs:
           exit 1
 
       # ==========================================
-      # BACKEND
-      - name: Start server and wait for health
+      # START BACKEND
+      # ==========================================
+
+      - name: Start backend
         shell: bash
         run: |
           echo "Starting backend..."
 
-          npm start > server.log 2>&1 &
-          SERVER_PID=$!
-          echo $SERVER_PID > server.pid
+          nohup npm start > server.log 2>&1 &
+          echo $! > server.pid
 
-          echo "Waiting for backend on port 8080..."
+      - name: Verify backend
+        shell: bash
+        run: |
+          echo "Waiting for backend..."
 
           for i in $(seq 1 30); do
+            if curl -sSf \
+              http://localhost:8080/api/tasks/ping \
+              > /tmp/backend-health 2>/dev/null; then
 
-            if curl -sSf http://localhost:8080/api/tasks/ping > /tmp/health_response 2>/dev/null; then
-              curl -sSf http://localhost:8080/api/tasks/ping
-              echo
               echo "Backend is healthy!"
-              cat /tmp/health_response
+              cat /tmp/backend-health
               exit 0
             fi
 
-            echo "Waiting for server... ($i/30)"
+            echo "Waiting for backend... ($i/30)"
             sleep 1
           done
 
-          echo
-          echo "Backend failed to become healthy."
-          echo
-          echo "========== SERVER LOG =========="
+          echo "Backend failed."
+
+          echo "========== BACKEND LOG =========="
           cat server.log
-          echo
-          echo "========== PROCESS =========="
-          ps aux | grep node || true
-          echo
+
           echo "========== PORT 8080 =========="
           ss -ltnp | grep :8080 || true
 
           exit 1
 
+
+  # ==========================================
+  # FRONTEND
+  # ==========================================
+
+  frontend:
+    name: Frontend CI
+    needs: backend
+    runs-on: self-hosted
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      # ==========================================
+      # START FRONTEND
+      # ==========================================
+
+      - name: Start frontend
+        shell: bash
+        run: |
+          echo "Starting frontend..."
+
+          nohup npm start > frontend.log 2>&1 &
+          echo $! > frontend.pid
+
+      - name: Verify frontend
+        shell: bash
+        run: |
+          echo "Waiting for frontend on port 3000..."
+
+          for i in $(seq 1 30); do
+            if curl -sSf \
+              http://localhost:3000 \
+              > /dev/null 2>&1; then
+
+              echo "Frontend is healthy!"
+              exit 0
+            fi
+
+            echo "Waiting for frontend... ($i/30)"
+            sleep 1
+          done
+
+          echo "Frontend failed."
+
+          echo "========== FRONTEND LOG =========="
+          cat frontend.log
+
+          exit 1
+
+      # ==========================================
+      # TEST FRONTEND → BACKEND
+      # ==========================================
+
+      - name: Verify frontend can reach backend
+        run: |
+          curl -fsS http://localhost:8080/api/tasks/ping
+
+          echo
+          echo "Frontend/Backend environment is working!"
 
