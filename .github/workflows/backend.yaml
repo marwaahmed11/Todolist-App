@@ -1,4 +1,4 @@
-name: Backend CI 
+name: Backend CI
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
     branches:
       - main
 
-  workflow_dispatch:   # optional (manual trigger)
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,6 +20,7 @@ jobs:
         working-directory: server
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -38,6 +39,7 @@ jobs:
           node --check routes/tasks.js
           node --check models/task.js
 
+
       - name: Start MongoDB
         run: |
           docker rm -f mongodb 2>/dev/null || true
@@ -47,28 +49,56 @@ jobs:
             -p 27017:27017 \
             marwaahmed11/mongodb:v1
 
-      - name: Start server and wait for health
-        shell: bash
+      - name: Wait for MongoDB
+        working-directory: .
         run: |
-          # install & build (if needed)
-          npm ci
-          # start server in background and save logs
-          npm start &> server.log & echo $! > server.pid
+          echo "Waiting for MongoDB..."
 
-          # wait for the HTTP health endpoint (30s timeout)
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/api/tasks/ping; then
-              echo "Server is healthy"
-              break
+            if docker exec mongodb \
+              mongosh --quiet \
+              --eval "db.adminCommand('ping').ok" 2>/dev/null | grep -q 1; then
+              echo "MongoDB is ready"
+              exit 0
             fi
-            echo "Waiting for server... ($i)"
+
+            echo "Waiting for MongoDB... ($i/30)"
             sleep 1
           done
 
-          # final check and fail with logs if still down
-          if ! curl -fsS http://localhost:8080/api/tasks/ping; then
-            echo "Server did not become healthy, dumping server.log:"
-            tail -n 200 server.log
-            exit 1
-          fi
+          echo "MongoDB failed to start"
+          docker logs mongodb
+          exit 1
 
+      # ==========================================
+      # BACKEND
+      # ==========================================
+      - name: Start server and wait for health
+        shell: bash
+        run: |
+          echo "Starting backend..."
+
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+
+          echo "Waiting for backend..."
+
+          for i in $(seq 1 30); do
+            if curl --fail --silent \
+              http://localhost:8080/api/tasks/ping; then
+
+              echo
+              echo "Server is healthy"
+              exit 0
+            fi
+
+            echo "Waiting for server... ($i/30)"
+            sleep 1
+          done
+
+          echo "Server did not become healthy"
+          echo "================================"
+          echo "Backend logs:"
+          echo "================================"
+          cat server.log
+          exit 1
