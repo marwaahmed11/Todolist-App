@@ -177,3 +177,29 @@ jobs:
             rm -f frontend.pid
           fi
           docker rm -f mongodb 2>/dev/null || true
+
+      - name: Test adding a task via API
+        shell: bash
+        run: |
+          echo "Testing POST /api/tasks..."
+          
+          # Add a task
+          RESPONSE=$(curl -X POST http://localhost:8080/api/tasks \
+            -H "Content-Type: application/json" \
+            -d '{"task":"Test task from CI","completed":false}' \
+            -s)
+          
+          echo "Response: $RESPONSE"
+          
+          # Verify the task was added by getting all tasks
+          echo "Fetching all tasks..."
+          TASKS=$(curl -s http://localhost:8080/api/tasks)
+          echo "Tasks: $TASKS"
+          
+          # Check if response contains the task
+          if echo "$RESPONSE" | grep -q "Test task from CI"; then
+            echo "✅ Task successfully added!"
+          else
+            echo "❌ Failed to add task"
+            exit 1
+          fi
