@@ -3,7 +3,9 @@ import axios from "axios";
 // const apiUrl = "http://"+process.env.ENV_PORT+":8080/api/tasks";
 // const apiUrl = "http://backend:8082/api/tasks";  when working with compose
 
-const apiUrl = "http://localhost:8088/api/tasks";
+//const apiUrl = "http://localhost:8088/api/tasks";
+
+const apiUrl = "http://localhost:8080/api/tasks";
 
 // const apiUrl = "http://minikubeip:nodeportIP/api/tasks";
 // const apiUrl = "http://192.168.49.2:30038/api/tasks"; // for minikube node port backend service 
