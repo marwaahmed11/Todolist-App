@@ -38,12 +38,16 @@ jobs:
           node --check routes/tasks.js
           node --check models/task.js
 
-      - name: Start app and verify startup
+      - name: Start server and wait for health
+        shell: bash
         run: |
-          # start server and capture logs
-          npm start > server.log 2>&1 &
-          # wait up to 15s for the health endpoint
-          for i in {1..15}; do
+          # install & build (if needed)
+          npm ci
+          # start server in background and save logs
+          npm start &> server.log & echo $! > server.pid
+
+          # wait for the HTTP health endpoint (30s timeout)
+          for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/api/tasks/ping; then
               echo "Server is healthy"
               break
@@ -51,7 +55,8 @@ jobs:
             echo "Waiting for server... ($i)"
             sleep 1
           done
-          # if still not healthy, print the log and exit nonzero
+
+          # final check and fail with logs if still down
           if ! curl -fsS http://localhost:8080/api/tasks/ping; then
             echo "Server did not become healthy, dumping server.log:"
             tail -n 200 server.log
