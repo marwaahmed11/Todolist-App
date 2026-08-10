@@ -72,23 +72,23 @@ jobs:
 
       # ==========================================
       # BACKEND
-      # ==========================================
       - name: Start server and wait for health
         shell: bash
         run: |
           echo "Starting backend..."
 
           npm start > server.log 2>&1 &
-          echo $! > server.pid
+          SERVER_PID=$!
+          echo $SERVER_PID > server.pid
 
-          echo "Waiting for backend..."
+          echo "Waiting for backend on port 8080..."
 
           for i in $(seq 1 30); do
-            if curl --fail --silent \
-              http://localhost:8080/api/tasks/ping; then
 
+            if curl -sSf http://localhost:8080/api/tasks/ping > /tmp/health_response 2>/dev/null; then
               echo
-              echo "Server is healthy"
+              echo "Backend is healthy!"
+              cat /tmp/health_response
               exit 0
             fi
 
@@ -96,9 +96,18 @@ jobs:
             sleep 1
           done
 
-          echo "Server did not become healthy"
-          echo "================================"
-          echo "Backend logs:"
-          echo "================================"
+          echo
+          echo "Backend failed to become healthy."
+          echo
+          echo "========== SERVER LOG =========="
           cat server.log
+          echo
+          echo "========== PROCESS =========="
+          ps aux | grep node || true
+          echo
+          echo "========== PORT 8080 =========="
+          ss -ltnp | grep :8080 || true
+
           exit 1
+
+
