@@ -86,6 +86,7 @@ jobs:
           for i in $(seq 1 30); do
 
             if curl -sSf http://localhost:8080/api/tasks/ping > /tmp/health_response 2>/dev/null; then
+              curl -sSf http://localhost:8080/api/tasks/ping
               echo
               echo "Backend is healthy!"
               cat /tmp/health_response
