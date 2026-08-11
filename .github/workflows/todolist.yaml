@@ -72,7 +72,7 @@ jobs:
         working-directory: server
         env:
           PORT: 8080
-          MONGODB_URI: mongodb://127.0.0.1:27017/todo-app
+          MONGODB_URI: mongodb://mongodb:27017/todo-app
         run: |
           echo "Starting backend..."
           # start the backend and write logs/pid to the repository root so other steps can access them
@@ -80,6 +80,18 @@ jobs:
           echo $! > ../server.pid
           sleep 2
           tail -n 200 ../server.log || true
+
+      - name: Start frontend
+        shell: bash
+        working-directory: client
+        run: |
+          echo "Starting frontend..."
+          npm ci
+          npm start > ../frontend.log 2>&1 &
+          echo $! > ../frontend.pid
+          sleep 5
+          tail -n 50 ../frontend.log || true
+
       - name: Verify frontend
         shell: bash
         working-directory: client
