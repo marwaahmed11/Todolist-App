@@ -8,15 +8,10 @@ module.exports = async () => {
            //useCreateIndex: true,
           // useUnifiedTopology: true,
         };
+        const mongoURI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/todo-app";
         await mongoose.connect(
-            //mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.3.2
-
-            // "mongodb://mongodb:mongodb@"+process.env.ENV_PORT+":27017/mongodb?directConnection=true&serverSelectionTimeoutMS=2000",
-             //  "mongodb://127.0.0.1:27017/todo-app",  // to run mongodb in local machine
-            //"mongodb://<db-container-name if they are in the same network>:27017/todo-app",
-            "mongodb://mongodb:27017/todo-app",
-           
-              connectionParams
+            mongoURI,
+            connectionParams
           );
         console.log("Connected to MongoDB successfully.");
     } catch (error) {

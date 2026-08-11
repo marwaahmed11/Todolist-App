@@ -72,7 +72,7 @@ jobs:
         working-directory: server
         env:
           PORT: 8080
-          MONGODB_URI: mongodb://mongodb:27017/todo-app
+          MONGODB_URI: mongodb://127.0.0.1:27017/todo-app
         run: |
           echo "Starting backend..."
           # start the backend and write logs/pid to the repository root so other steps can access them
