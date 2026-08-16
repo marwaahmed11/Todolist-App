@@ -1,0 +1,219 @@
+name: MERN CI/CD with Agentic Repair
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      max_iterations:
+        description: 'Max repair iterations'
+        required: false
+        default: '3'
+      auto_merge:
+        description: 'Auto-merge successful PRs'
+        required: false
+        default: 'false'
+
+jobs:
+  test-and-lint:
+    runs-on: self-hosted
+    name: Test & Lint
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+            agentic mern/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Install agentic dependencies
+        working-directory: agentic mern
+        run: npm ci
+
+      - name: Lint code
+        run: |
+          cd server && npm run lint --if-present
+          cd ../client && npm run lint --if-present
+          cd ../agentic\ mern && npm run lint --if-present
+
+      - name: Build frontend
+        working-directory: client
+        run: npm run build --if-present
+
+      - name: Run server tests
+        working-directory: server
+        run: npm test -- --passWithNoTests
+
+      - name: Save test status
+        if: always()
+        run: |
+          echo "BUILD_ID=${{ github.run_id }}" >> "$GITHUB_ENV"
+
+      - name: Comment PR on failure
+        if: ${{ failure() && github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ Tests failed! The agentic repair workflow will attempt to fix this automatically.'
+            })
+
+  agentic-repair:
+    needs: test-and-lint
+    if: ${{ needs.test-and-lint.result == 'failure' }}
+    runs-on: self-hosted
+    name: Agentic Repair
+
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install agentic dependencies
+        working-directory: agentic mern
+        run: npm ci
+
+      - name: Run Agentic Agent
+        id: agent
+        working-directory: agentic mern
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-2.0-flash
+          GEMINI_TEMP: '0.2'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_BASE_BRANCH: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          MAX_ITERATIONS: ${{ inputs.max_iterations || '3' }}
+          HITL_ENABLED: 'true'
+          AUTO_MERGE: ${{ inputs.auto_merge || 'false' }}
+        run: |
+          npx ts-node agentic-mern.ts 2>&1 | tee agent.log
+        continue-on-error: true
+
+      - name: Check if PR was created
+        id: pr_check
+        run: |
+          if grep -q "PR created:" agentic\ mern/agent.log; then
+            echo "pr_created=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_created=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment PR on repair attempt
+        if: ${{ steps.pr_check.outputs.pr_created == 'true' && github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **Agentic Agent has created a repair PR!**\n\nPlease review the changes and merge if they look good.'
+            })
+
+      - name: Upload agent logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: agentic-logs-${{ github.run_id }}
+          path: |
+            agentic mern/agent.log
+            agentic mern/agentic_tmp/
+
+      - name: Notify team on agent failure
+        if: ${{ failure() && github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Agentic Agent encountered an error.** Manual review needed.\n\nCheck the workflow logs for details.'
+            })
+
+  notify:
+    needs: [test-and-lint]
+    if: always()
+    runs-on: self-hosted
+    name: Notification
+
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test-and-lint.result }}" == "failure" ]; then
+            echo "Tests failed - Agentic Agent was triggered"
+          else
+            echo "All tests passed ✓"
+          fi
+
+      - name: Post to Slack (Optional)
+        if: ${{ failure() && secrets.SLACK_WEBHOOK != '' }}
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "MERN CI/CD Pipeline",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "❌ Tests Failed\n🤖 Agentic Agent is attempting repairs...\nRepository: ${{ github.repository }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }

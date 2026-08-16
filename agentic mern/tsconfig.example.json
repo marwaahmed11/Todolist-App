@@ -1,0 +1,75 @@
+{
+  "compilerOptions": {
+    // Target and Module
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+
+    // Output
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    // Strict Type Checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // Additional Checks
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+
+    // Module Resolution
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    // React JSX
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+
+    // Skip Lib Check
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Path Mapping (for easier imports)
+    "baseUrl": ".",
+    "paths": {
+      "@server/*": ["server/*"],
+      "@client/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@utils/*": ["src/utils/*"],
+      "@controllers/*": ["server/controllers/*"],
+      "@models/*": ["server/models/*"],
+      "@routes/*": ["server/routes/*"],
+      "@middleware/*": ["server/middleware/*"],
+      "@types/*": ["server/types/*"]
+    }
+  },
+  "include": [
+    "server/**/*",
+    "src/**/*",
+    "agentic-mern.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "build",
+    ".next",
+    "agentic_tmp"
+  ]
+}

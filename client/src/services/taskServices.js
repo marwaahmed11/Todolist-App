@@ -30,6 +30,6 @@ export function deleteTask(id) {
     return axios.delete(apiUrl + "/" + id);
 }
 
-addTask({ task: "Buy milk", completed: false })
+addTaskxxx({ task: "Buy milk", completed: false })
   .then((res) => console.log("Added:", res.data))
   .catch((err) => console.error("Error adding task:", err.response?.data || err.message));
