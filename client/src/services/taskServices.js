@@ -33,3 +33,7 @@ export function deleteTask(id) {
 addTaskxxx({ task: "Buy milk", completed: false })
   .then((res) => console.log("Added:", res.data))
   .catch((err) => console.error("Error adding task:", err.response?.data || err.message));
+
+
+
+  
